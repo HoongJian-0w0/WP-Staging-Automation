@@ -1,5 +1,7 @@
 package com.catosolutions.ui;
 
+import com.catosolutions.utils.Dialog;
+
 import javax.swing.*;
 import java.awt.*;
 import java.util.ArrayList;
@@ -29,6 +31,7 @@ public class TabManager {
         mmCheckboxes.clear();
 
         textAreas.add(firstDirField);
+        attachEnterMoveToEnd(firstDirField);
         firstDirField.setRows(20);
         JCheckBox mmCheck = new JCheckBox("MM");
         mmCheck.setFont(new Font("Arial", Font.PLAIN, 10));
@@ -65,22 +68,60 @@ public class TabManager {
     private static void addClosableTab(JTabbedPane tabbedPane, String title, JTextArea area, boolean closeable) {
         int plusTabIndex = tabbedPane.indexOfComponent(addTabPanel);
 
-        JScrollPane scrollPane = new JScrollPane(area);
-        scrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
+        JPanel checkboxPanel = new JPanel();
+        checkboxPanel.setLayout(new BoxLayout(checkboxPanel, BoxLayout.Y_AXIS));
+
+        area.setPreferredSize(new Dimension(400, 400));
 
         JPanel mmPanel = new JPanel();
         mmPanel.setLayout(new BoxLayout(mmPanel, BoxLayout.Y_AXIS));
         mmPanel.setBorder(BorderFactory.createEmptyBorder(0, 8, 0, 0));
-
         int index = textAreas.size() - 1;
         JCheckBox mm = mmCheckboxes.get(index);
         mm.setAlignmentY(Component.TOP_ALIGNMENT);
         mmPanel.add(mm);
         mmPanel.add(Box.createVerticalGlue());
 
+        JPanel horizontalPanel = new JPanel();
+        horizontalPanel.setLayout(new BoxLayout(horizontalPanel, BoxLayout.X_AXIS));
+        horizontalPanel.add(checkboxPanel);
+        horizontalPanel.add(Box.createRigidArea(new Dimension(4, 0)));
+        horizontalPanel.add(area);
+
+        JScrollPane scrollPane = new JScrollPane(horizontalPanel);
+        scrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
+        scrollPane.getVerticalScrollBar().setUnitIncrement(8);
+        scrollPane.getVerticalScrollBar().setBlockIncrement(60);
+
+        JPanel centerPanel = new JPanel(new BorderLayout());
+        centerPanel.add(scrollPane, BorderLayout.CENTER);
+        centerPanel.add(mmPanel, BorderLayout.EAST);
+
+        JPanel bottomPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        bottomPanel.setBorder(BorderFactory.createEmptyBorder(-4, 0, -8, 0));
+        JCheckBox allCheck = new JCheckBox("All");
+        allCheck.addActionListener(e -> {
+            boolean selected = allCheck.isSelected();
+            for (int i = 0; i < checkboxPanel.getComponentCount(); i++) {
+                Component comp = checkboxPanel.getComponent(i);
+                if (comp instanceof JCheckBox cb) {
+                    try {
+                        int start = area.getLineStartOffset(i);
+                        int end = area.getLineEndOffset(i);
+                        String line = area.getText(start, end - start).trim();
+                        cb.setSelected(selected && !line.isEmpty());
+                    } catch (Exception ex) {
+                        cb.setSelected(false); // fallback
+                    }
+                }
+            }
+        });
+        bottomPanel.add(allCheck);
+        bottomPanel.add(new JLabel(" Select/Deselect All"));
+
         JPanel contentPanel = new JPanel(new BorderLayout());
-        contentPanel.add(scrollPane, BorderLayout.CENTER);
-        contentPanel.add(mmPanel, BorderLayout.EAST);
+        contentPanel.add(centerPanel, BorderLayout.CENTER);
+        contentPanel.add(bottomPanel, BorderLayout.SOUTH);
         contentPanel.setPreferredSize(new Dimension(0, 200));
         contentPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 160));
 
@@ -110,8 +151,101 @@ public class TabManager {
         int newIndex = tabbedPane.indexOfComponent(tabContent);
         tabbedPane.setTabComponentAt(newIndex, tabHeader);
 
+        area.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+            public void insertUpdate(javax.swing.event.DocumentEvent e) {
+                SwingUtilities.invokeLater(() -> syncCheckboxesWithText(area, checkboxPanel, allCheck));
+            }
+            public void removeUpdate(javax.swing.event.DocumentEvent e) {
+                SwingUtilities.invokeLater(() -> syncCheckboxesWithText(area, checkboxPanel, allCheck));
+            }
+            public void changedUpdate(javax.swing.event.DocumentEvent e) {}
+        });
+
+        syncCheckboxesWithText(area, checkboxPanel, allCheck);
+
         renumberTabs(tabbedPane);
         ensurePlusTabVisible(tabbedPane);
+    }
+
+    private static void syncCheckboxesWithText(JTextArea textArea, JPanel checkboxPanel, JCheckBox allCheck) {
+        int newLineCount = textArea.getLineCount();
+
+        List<Boolean> oldStates = new ArrayList<>();
+        Component[] oldComponents = checkboxPanel.getComponents();
+        for (Component comp : oldComponents) {
+            if (comp instanceof JCheckBox cb) {
+                oldStates.add(cb.isSelected());
+            }
+        }
+
+        checkboxPanel.removeAll();
+
+        GridBagLayout layout = new GridBagLayout();
+        checkboxPanel.setLayout(layout);
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridx = 0;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.anchor = GridBagConstraints.NORTHWEST;
+
+        for (int i = 0; i < newLineCount; i++) {
+            final int index = i;
+            JCheckBox checkBox = new JCheckBox();
+            checkBox.setMargin(new Insets(0, -2, 0, 0));
+            checkBox.setPreferredSize(new Dimension(18, textArea.getFontMetrics(textArea.getFont()).getHeight()));
+            if (i < oldStates.size()) checkBox.setSelected(oldStates.get(i));
+
+            checkBox.addActionListener(e -> {
+                try {
+                    String lineText = textArea.getText(
+                            textArea.getLineStartOffset(index),
+                            textArea.getLineEndOffset(index) - textArea.getLineStartOffset(index)
+                    ).trim();
+
+                    if (lineText.isEmpty()) {
+                        checkBox.setSelected(false);
+                        Dialog.AlertDialog("This directory line is empty.");
+                    }
+
+                    // Only count checkboxes with non-empty lines
+                    int totalValidCheckboxes = 0;
+                    int checkedValidCheckboxes = 0;
+
+                    for (int j = 0; j < checkboxPanel.getComponentCount(); j++) {
+                        Component comp = checkboxPanel.getComponent(j);
+                        if (comp instanceof JCheckBox cb) {
+                            String line = "";
+                            try {
+                                int start = textArea.getLineStartOffset(j);
+                                int end = textArea.getLineEndOffset(j);
+                                line = textArea.getText(start, end - start).trim();
+                            } catch (Exception ignored) {}
+
+                            if (!line.isEmpty()) {
+                                totalValidCheckboxes++;
+                                if (cb.isSelected()) checkedValidCheckboxes++;
+                            }
+                        }
+                    }
+
+                    // Only set "All" checkbox if all non-empty lines are checked
+                    allCheck.setSelected(totalValidCheckboxes > 0 && checkedValidCheckboxes == totalValidCheckboxes);
+
+                } catch (Exception ex) {
+                    checkBox.setSelected(false);
+                    Dialog.AlertDialog("Invalid line selection.");
+                }
+            });
+
+            gbc.gridy = i;
+            checkboxPanel.add(checkBox, gbc);
+        }
+
+        gbc.weighty = 1;
+        gbc.gridy = newLineCount;
+        checkboxPanel.add(Box.createVerticalGlue(), gbc);
+
+        checkboxPanel.revalidate();
+        checkboxPanel.repaint();
     }
 
     private static JButton createCloseButton(JTabbedPane tabbedPane, Component content) {
@@ -186,8 +320,39 @@ public class TabManager {
         }
     }
 
+    private static void attachEnterMoveToEnd(JTextArea area) {
+        area.addKeyListener(new java.awt.event.KeyAdapter() {
+            @Override
+            public void keyReleased(java.awt.event.KeyEvent e) {
+                if (e.getKeyChar() == '\n') {
+                    String[] lines = area.getText().split("\\n");
+                    StringBuilder cleaned = new StringBuilder();
+                    for (String line : lines) {
+                        if (!line.trim().isEmpty()) {
+                            cleaned.append(line.trim()).append("\n");
+                        }
+                    }
+                    area.setText(cleaned.toString().trim() + "\n");
+                    area.setCaretPosition(area.getText().length());
+                }
+            }
+        });
+    }
+
     public static List<JTextArea> getAllTextAreas() {
         return new ArrayList<>(textAreas);
+    }
+
+    public static List<JCheckBox> getAllMMCheckboxes() {
+        return new ArrayList<>(mmCheckboxes);
+    }
+
+    public static List<JCheckBox> getMmCheckboxes() {
+        return mmCheckboxes;
+    }
+
+    public static List<JTextArea> getTextAreas() {
+        return textAreas;
     }
 
     public static JTabbedPane getTabPane() {
@@ -199,55 +364,113 @@ public class TabManager {
         JTextArea newArea = new JTextArea(20, 30);
         newArea.setLineWrap(true);
         newArea.setWrapStyleWord(true);
+        attachEnterMoveToEnd(newArea);
         newArea.setText(content);
-
         textAreas.add(newArea);
-
         JCheckBox mmCheck = new JCheckBox("MM");
         mmCheck.setFont(new Font("Arial", Font.PLAIN, 10));
         mmCheck.setFocusable(false);
         mmCheckboxes.add(mmCheck);
-
         addClosableTab(currentTabbedPane, "Dir" + tabIndex, newArea, true);
-    }
-
-    public static List<JCheckBox> getAllMMCheckboxes() {
-        return new ArrayList<>(mmCheckboxes);
-    }
-
-    public static void selectFirstTabAndScroll() {
-        if (currentTabbedPane == null || currentTabbedPane.getTabCount() == 0) return;
-
-        try {
-            // Workaround: temporarily switch to another tab (if exists), then switch back to index 0
-            if (currentTabbedPane.getTabCount() > 1) {
-                currentTabbedPane.setSelectedIndex(1);
-            }
-
-            // Select Dir1 (index 0)
-            currentTabbedPane.setSelectedIndex(0);
-
-            // Scroll to Dir1 (forces left-most tab into view)
-            SwingUtilities.invokeLater(() -> {
-                Rectangle rect = currentTabbedPane.getBoundsAt(0);
-                currentTabbedPane.scrollRectToVisible(rect);
-            });
-
-        } catch (Exception e) {
-            e.printStackTrace(); // Just in case something weird happens
-        }
     }
 
     public static JTabbedPane getTabbedPane() {
         return currentTabbedPane;
     }
 
-    public static List<JCheckBox> getMmCheckboxes() {
-        return mmCheckboxes;
+    public static List<String> getCheckedDirectoriesFromActiveTab() {
+        int activeIndex = currentTabbedPane.getSelectedIndex();
+
+        // Prevent accessing the '+' tab
+        if (activeIndex >= tabComponents.size()) return new ArrayList<>();
+
+        JTextArea area = textAreas.get(activeIndex);
+        List<String> checkedLines = new ArrayList<>();
+
+        JPanel tabContent = (JPanel) tabComponents.get(activeIndex);
+        JScrollPane scrollPane = (JScrollPane) ((JPanel)((JPanel) tabContent.getComponent(0)).getComponent(0)).getComponent(0);
+        JViewport viewport = scrollPane.getViewport();
+        JPanel horizontalPanel = (JPanel) viewport.getView();
+        JPanel checkboxPanel = (JPanel) horizontalPanel.getComponent(0); // first component = checkboxes
+
+        int lineCount = area.getLineCount();
+
+        int checkboxIdx = 0;
+        for (Component comp : checkboxPanel.getComponents()) {
+            if (comp instanceof JCheckBox cb && checkboxIdx < lineCount) {
+                try {
+                    int start = area.getLineStartOffset(checkboxIdx);
+                    int end = area.getLineEndOffset(checkboxIdx);
+                    String line = area.getText(start, end - start).trim();
+                    if (!line.isEmpty() && cb.isSelected()) {
+                        checkedLines.add(line);
+                    }
+                } catch (Exception ignored) {}
+                checkboxIdx++;
+            }
+        }
+
+        return checkedLines;
     }
 
-    public static List<JTextArea> getTextAreas() {
-        return textAreas;
+    public static void removeCheckedLinesFromTab(int tabIndex) {
+        if (tabIndex < 0 || tabIndex >= textAreas.size()) {
+            Dialog.ErrorDialog("Invalid tab selected.");
+            return;
+        }
+
+        JTextArea area = textAreas.get(tabIndex);
+        JPanel tabContent = (JPanel) tabComponents.get(tabIndex);
+        JScrollPane scrollPane = (JScrollPane) ((JPanel)((JPanel) tabContent.getComponent(0)).getComponent(0)).getComponent(0);
+        JPanel checkboxPanel = (JPanel) ((JPanel) scrollPane.getViewport().getView()).getComponent(0);
+        JPanel bottomPanel = (JPanel) ((JPanel) tabContent.getComponent(0)).getComponent(1); // Bottom panel
+        JCheckBox allCheck = null;
+
+        for (Component comp : bottomPanel.getComponents()) {
+            if (comp instanceof JCheckBox cb) {
+                allCheck = cb;
+                break;
+            }
+        }
+
+        int lineCount = area.getLineCount();
+        List<String> remainingLines = new ArrayList<>();
+        boolean allSelected = true;
+
+        try {
+            for (int i = 0; i < lineCount; i++) {
+                int start = area.getLineStartOffset(i);
+                int end = area.getLineEndOffset(i);
+                String line = area.getText(start, end - start).trim();
+
+                Component comp = checkboxPanel.getComponent(i);
+                if (comp instanceof JCheckBox cb) {
+                    if (!line.isEmpty() && !cb.isSelected()) {
+                        remainingLines.add(line);
+                        allSelected = false;
+                    } else if (line.isEmpty()) {
+                        allSelected = false;
+                    }
+                }
+            }
+
+            if (!Dialog.ConfirmationDialog("Remove all checked entries?")) return;
+
+            if (allSelected || remainingLines.isEmpty()) {
+                area.setText(""); // reset area
+                if (allCheck != null) allCheck.setSelected(false); // ⬅️ Uncheck 'All'
+            } else {
+                area.setText(String.join("\n", remainingLines));
+                if (allCheck != null) allCheck.setSelected(false); // ⬅️ Uncheck just in case
+            }
+
+            checkboxPanel.removeAll();
+            checkboxPanel.revalidate();
+            checkboxPanel.repaint();
+
+        } catch (Exception e) {
+            Dialog.AlertDialog("Error during deletion: " + e.getMessage());
+        }
     }
 
 }

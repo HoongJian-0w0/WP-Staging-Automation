@@ -56,6 +56,15 @@ public class LoginPanelBuilder {
             FileManagerUtil.saveOnlyTabDataToFile();
         });
 
+        JButton removeCheckedBtn = new JButton("Remove");
+        removeCheckedBtn.setFont(new Font("Arial", Font.PLAIN, 11));
+        removeCheckedBtn.setMargin(new Insets(4, 10, 4, 10));
+        removeCheckedBtn.addActionListener(e -> {
+            int selectedIndex = tabbedPane.getSelectedIndex();
+            TabManager.removeCheckedLinesFromTab(selectedIndex);
+        });
+
+
         JButton clearButton = new JButton("Clear");
         clearButton.setFont(new Font("Arial", Font.PLAIN, 11));
         clearButton.setMargin(new Insets(4, 10, 4, 10));
@@ -80,6 +89,7 @@ public class LoginPanelBuilder {
         automationNote.setFont(new Font("Arial", Font.ITALIC, 10));
 
         bottomLeftWrapper.add(saveButton);
+        bottomLeftWrapper.add(removeCheckedBtn);
         bottomLeftWrapper.add(clearButton);
         bottomLeftWrapper.add(Box.createHorizontalStrut(10));
         bottomLeftWrapper.add(automationNote);
