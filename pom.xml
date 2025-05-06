@@ -6,7 +6,7 @@
 
     <groupId>com.catosolutions</groupId>
     <artifactId>Wordpress-Staging_Automation</artifactId>
-    <version>1.5-SNAPSHOT</version>
+    <version>1.5.1-SNAPSHOT</version>
 
     <dependencies>
         <dependency>

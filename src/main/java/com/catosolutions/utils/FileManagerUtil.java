@@ -9,6 +9,20 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class FileManagerUtil {
+    private static File getDataFile() {
+        String userHome = System.getProperty("user.home");
+        File dir = new File(userHome, "Documents/CatoSolutions");
+        if (!dir.exists()) dir.mkdirs();
+        return new File(dir, "data.txt");
+    }
+
+    private static File getTempDataFile() {
+        String userHome = System.getProperty("user.home");
+        File dir = new File(userHome, "Documents/CatoSolutions");
+        if (!dir.exists()) dir.mkdirs();
+        return new File(dir, "data_temp.txt");
+    }
+
     public static JPanel createLabeledPanel(String label, JComponent component) {
         JPanel panel = new JPanel(new BorderLayout());
         panel.add(new JLabel(label), BorderLayout.NORTH);
@@ -19,7 +33,7 @@ public class FileManagerUtil {
     public static void loadDataFromFile(JTextField urlField, JTextField userField, JPasswordField passField,
                                         JCheckBox aioCheck, JCheckBox aiouCheck, JTextField aiouPathField,
                                         JCheckBox quitAfterFinishCheckbox) {
-        File dataFile = new File("data.txt");
+        File dataFile = getDataFile();
         if (!dataFile.exists()) return;
 
         try (BufferedReader reader = new BufferedReader(new FileReader(dataFile))) {
@@ -68,7 +82,7 @@ public class FileManagerUtil {
                         int finalTabIndex = tabIndex;
                         SwingUtilities.invokeLater(() -> {
                             JPanel tabContent = (JPanel) TabManager.getTabPane().getComponentAt(finalTabIndex);
-                            JScrollPane scrollPane = (JScrollPane) ((JPanel)((JPanel) tabContent.getComponent(0)).getComponent(0)).getComponent(0);
+                            JScrollPane scrollPane = (JScrollPane) ((JPanel) ((JPanel) tabContent.getComponent(0)).getComponent(0)).getComponent(0);
                             JPanel checkboxPanel = (JPanel) ((JPanel) scrollPane.getViewport().getView()).getComponent(0);
 
                             for (int j = 0; j < checkedStates.size(); j++) {
@@ -104,7 +118,7 @@ public class FileManagerUtil {
     public static void saveDataToFile(String url, String user, String pass,
                                       boolean installAIO, boolean installAIOU, String ultimateDir,
                                       boolean quitAfterFinish) {
-        File outFile = new File("data.txt");
+        File outFile = getDataFile();
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(outFile))) {
             writer.write(CryptoUtil.encrypt("cpanel_url=" + url) + "\n");
             writer.write(CryptoUtil.encrypt("username=" + user) + "\n");
@@ -149,10 +163,9 @@ public class FileManagerUtil {
         }
     }
 
-
     public static void saveOnlyTabDataToFile() {
-        File dataFile = new File("data.txt");
-        File tempFile = new File("data_temp.txt");
+        File dataFile = getDataFile();
+        File tempFile = getTempDataFile();
 
         try {
             try (BufferedReader reader = new BufferedReader(new FileReader(dataFile));
