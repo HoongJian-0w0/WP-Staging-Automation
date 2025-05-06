@@ -16,7 +16,7 @@ public class Log {
     private static final PrintStream originalOut = System.out;
     private static final PrintStream originalErr = System.err;
 
-    private static final boolean debug = false;
+    private static final boolean debug = true;
 
     /**
      * Redirects System.out and System.err to in-memory log + UI (JTextArea if bound).

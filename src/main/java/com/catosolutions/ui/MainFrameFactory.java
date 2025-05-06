@@ -9,7 +9,7 @@ public class MainFrameFactory {
     public static JFrame createMainFrame() {
         JFrame frame = new JFrame("WordPress Staging Setup");
         frame.setResizable(false);
-        frame.setSize(600, 700);
+        frame.setSize(600, 750);
         frame.setLocationRelativeTo(null);
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setLayout(new BorderLayout());

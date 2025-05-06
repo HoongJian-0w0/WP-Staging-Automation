@@ -5,7 +5,9 @@ import com.catosolutions.utils.Dialog;
 import javax.swing.*;
 import java.awt.*;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public class TabManager {
     private static final int MAX_TAB_COUNT = 64;
@@ -435,7 +437,7 @@ public class TabManager {
 
         int lineCount = area.getLineCount();
         List<String> remainingLines = new ArrayList<>();
-        boolean allSelected = true;
+        boolean hasSelected = false;
 
         try {
             for (int i = 0; i < lineCount; i++) {
@@ -445,24 +447,23 @@ public class TabManager {
 
                 Component comp = checkboxPanel.getComponent(i);
                 if (comp instanceof JCheckBox cb) {
-                    if (!line.isEmpty() && !cb.isSelected()) {
+                    if (!line.isEmpty() && cb.isSelected()) {
+                        hasSelected = true;
+                    } else if (!line.isEmpty()) {
                         remainingLines.add(line);
-                        allSelected = false;
-                    } else if (line.isEmpty()) {
-                        allSelected = false;
                     }
                 }
             }
 
+            if (!hasSelected) {
+                Dialog.AlertDialog("⚠️ Please select at least one item to delete.");
+                return;
+            }
+
             if (!Dialog.ConfirmationDialog("Remove all checked entries?")) return;
 
-            if (allSelected || remainingLines.isEmpty()) {
-                area.setText(""); // reset area
-                if (allCheck != null) allCheck.setSelected(false); // ⬅️ Uncheck 'All'
-            } else {
-                area.setText(String.join("\n", remainingLines));
-                if (allCheck != null) allCheck.setSelected(false); // ⬅️ Uncheck just in case
-            }
+            area.setText(String.join("\n", remainingLines));
+            if (allCheck != null) allCheck.setSelected(false);
 
             checkboxPanel.removeAll();
             checkboxPanel.revalidate();
@@ -471,6 +472,23 @@ public class TabManager {
         } catch (Exception e) {
             Dialog.AlertDialog("Error during deletion: " + e.getMessage());
         }
+    }
+
+    public static boolean hasDuplicateDirectories() {
+        List<String> checkedDirs = getCheckedDirectoriesFromActiveTab(); // only from the active tab
+        Set<String> seen = new HashSet<>();
+
+        for (String dir : checkedDirs) {
+            String trimmed = dir.trim();
+            if (!trimmed.isEmpty()) {
+                if (!seen.add(trimmed)) {
+                    Dialog.ErrorDialog("Duplicate checked directory/domain found: " + trimmed);
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
 }

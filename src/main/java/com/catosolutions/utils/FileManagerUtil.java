@@ -51,7 +51,7 @@ public class FileManagerUtil {
 
     public static void loadDataFromFile(JTextField urlField, JTextField userField, JPasswordField passField,
                                         JCheckBox aioCheck, JCheckBox aiouCheck, JTextField aiouPathField,
-                                        JCheckBox quitAfterFinishCheckbox) {
+                                        JCheckBox quitAfterFinishCheckbox, JTextField backupField) {
         File dataFile = getDataFile();
         if (!dataFile.exists()) return;
 
@@ -67,55 +67,12 @@ public class FileManagerUtil {
                     else if (line.startsWith("username=")) userField.setText(line.replace("username=", "").trim());
                     else if (line.startsWith("password=")) passField.setText(line.replace("password=", "").trim());
                     else if (line.startsWith("tab")) {
-                        int tabIndex = Integer.parseInt(line.substring(3, line.indexOf("=")).replace("[mm]", "")) - 1;
-                        boolean isMM = line.contains("[mm]");
-                        String rawContent = line.substring(line.indexOf("=") + 1).trim();
-                        String[] lines = rawContent.split(",");
-
-                        StringBuilder cleanedText = new StringBuilder();
-                        List<Boolean> checkedStates = new ArrayList<>();
-
-                        for (String entry : lines) {
-                            if (entry.startsWith("[checked]")) {
-                                checkedStates.add(true);
-                                cleanedText.append(entry.replaceFirst("\\[checked\\]", "")).append("\n");
-                            } else {
-                                checkedStates.add(false);
-                                cleanedText.append(entry).append("\n");
-                            }
-                        }
-
-                        while (TabManager.getAllTextAreas().size() <= tabIndex) {
-                            TabManager.createAndAddTab("");
-                        }
-
-                        JTextArea area = TabManager.getAllTextAreas().get(tabIndex);
-                        area.setText(cleanedText.toString().trim());
-
-                        if (isMM && tabIndex < TabManager.getAllMMCheckboxes().size()) {
-                            TabManager.getAllMMCheckboxes().get(tabIndex).setSelected(true);
-                        }
-
-                        if (!cleanedText.toString().isBlank()) lastFilledTabIndex = tabIndex;
-
-                        int finalTabIndex = tabIndex;
-                        SwingUtilities.invokeLater(() -> {
-                            JPanel tabContent = (JPanel) TabManager.getTabPane().getComponentAt(finalTabIndex);
-                            JScrollPane scrollPane = (JScrollPane) ((JPanel) ((JPanel) tabContent.getComponent(0)).getComponent(0)).getComponent(0);
-                            JPanel checkboxPanel = (JPanel) ((JPanel) scrollPane.getViewport().getView()).getComponent(0);
-
-                            for (int j = 0; j < checkedStates.size(); j++) {
-                                if (j < checkboxPanel.getComponentCount()) {
-                                    Component comp = checkboxPanel.getComponent(j);
-                                    if (comp instanceof JCheckBox cb) {
-                                        cb.setSelected(checkedStates.get(j));
-                                    }
-                                }
-                            }
-                        });
+                        int tabIndex = loadTabContent(line);
+                        if (tabIndex > lastFilledTabIndex) lastFilledTabIndex = tabIndex;
                     } else if (line.startsWith("installAIO=")) aioCheck.setSelected(Boolean.parseBoolean(line.replace("installAIO=", "").trim()));
                     else if (line.startsWith("installAIOU=")) aiouCheck.setSelected(Boolean.parseBoolean(line.replace("installAIOU=", "").trim()));
                     else if (line.startsWith("ultimatePluginDir=")) aiouPathField.setText(line.replace("ultimatePluginDir=", "").trim());
+                    else if (line.startsWith("backupDir=")) backupField.setText(line.replace("backupDir=", "").trim());
                     else if (line.startsWith("quitAfterFinish=")) quitAfterFinishCheckbox.setSelected(Boolean.parseBoolean(line.replace("quitAfterFinish=", "").trim()));
                 } catch (Exception e) {
                     // Skip invalid encrypted line
@@ -136,45 +93,19 @@ public class FileManagerUtil {
 
     public static void saveDataToFile(String url, String user, String pass,
                                       boolean installAIO, boolean installAIOU, String ultimateDir,
-                                      boolean quitAfterFinish) {
+                                      String backupDir, boolean quitAfterFinish) {
         File outFile = getDataFile();
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(outFile))) {
             writer.write(CryptoUtil.encrypt("cpanel_url=" + url) + "\n");
             writer.write(CryptoUtil.encrypt("username=" + user) + "\n");
             writer.write(CryptoUtil.encrypt("password=" + pass) + "\n");
 
-            List<JTextArea> tabDirFields = TabManager.getAllTextAreas();
-            List<JCheckBox> mmChecks = TabManager.getAllMMCheckboxes();
-
-            for (int i = 0; i < tabDirFields.size(); i++) {
-                JTextArea area = tabDirFields.get(i);
-                boolean isMM = i < mmChecks.size() && mmChecks.get(i).isSelected();
-                StringBuilder contentBuilder = new StringBuilder();
-
-                JPanel tabContent = (JPanel) TabManager.getTabPane().getComponentAt(i);
-                JScrollPane scrollPane = (JScrollPane) ((JPanel)((JPanel) tabContent.getComponent(0)).getComponent(0)).getComponent(0);
-                JPanel checkboxPanel = (JPanel) ((JPanel) scrollPane.getViewport().getView()).getComponent(0);
-
-                try {
-                    for (int j = 0; j < area.getLineCount(); j++) {
-                        int start = area.getLineStartOffset(j);
-                        int end = area.getLineEndOffset(j);
-                        String line = area.getText(start, end - start).trim();
-                        if (!line.isEmpty()) {
-                            Component comp = checkboxPanel.getComponent(j);
-                            boolean isChecked = comp instanceof JCheckBox cb && cb.isSelected();
-                            contentBuilder.append(isChecked ? "[checked]" : "").append(line).append(",");
-                        }
-                    }
-                } catch (Exception ignored) {}
-
-                String label = "tab" + (i + 1) + (isMM ? "[mm]" : "") + "=" + contentBuilder.toString().replaceAll(",$", "");
-                writer.write(CryptoUtil.encrypt(label) + "\n");
-            }
+            saveAllTabs(writer);
 
             writer.write(CryptoUtil.encrypt("installAIO=" + installAIO) + "\n");
             writer.write(CryptoUtil.encrypt("installAIOU=" + installAIOU) + "\n");
             writer.write(CryptoUtil.encrypt("ultimatePluginDir=" + ultimateDir) + "\n");
+            writer.write(CryptoUtil.encrypt("backupDir=" + backupDir) + "\n");
             writer.write(CryptoUtil.encrypt("quitAfterFinish=" + quitAfterFinish) + "\n");
 
         } catch (Exception ex) {
@@ -186,70 +117,21 @@ public class FileManagerUtil {
         File dataFile = getDataFile();
         File tempFile = getTempDataFile();
 
-        // Required keys and their defaults
-        String[] requiredKeys = {
-                "cpanel_url", "username", "password",
-                "installAIO", "installAIOU",
-                "ultimatePluginDir", "quitAfterFinish"
-        };
+        try (BufferedReader reader = new BufferedReader(new FileReader(dataFile));
+             BufferedWriter writer = new BufferedWriter(new FileWriter(tempFile))) {
 
-        // Step 1: Read all non-tab lines into map
-        java.util.Map<String, String> dataMap = new java.util.HashMap<>();
-        try (BufferedReader reader = new BufferedReader(new FileReader(dataFile))) {
             String line;
             while ((line = reader.readLine()) != null) {
                 try {
                     String decrypted = CryptoUtil.decrypt(line);
-                    if (!decrypted.startsWith("tab") && decrypted.contains("=")) {
-                        String key = decrypted.substring(0, decrypted.indexOf("="));
-                        String value = decrypted.substring(decrypted.indexOf("=") + 1);
-                        dataMap.put(key, value);
+                    if (!decrypted.startsWith("tab")) {
+                        writer.write(line);
+                        writer.newLine();
                     }
                 } catch (Exception ignored) {}
             }
-        } catch (IOException e) {
-            System.out.println("❌ Failed to read existing data: " + e.getMessage());
-            return;
-        }
 
-        try (BufferedWriter writer = new BufferedWriter(new FileWriter(tempFile))) {
-
-            for (String key : requiredKeys) {
-                String value = dataMap.getOrDefault(key, "");
-                writer.write(CryptoUtil.encrypt(key + "=" + value));
-                writer.newLine();
-            }
-
-            // Step 3: Write updated tab data
-            List<JTextArea> tabDirFields = TabManager.getAllTextAreas();
-            List<JCheckBox> mmChecks = TabManager.getAllMMCheckboxes();
-
-            for (int i = 0; i < tabDirFields.size(); i++) {
-                JTextArea area = tabDirFields.get(i);
-                boolean isMM = i < mmChecks.size() && mmChecks.get(i).isSelected();
-                StringBuilder contentBuilder = new StringBuilder();
-
-                JPanel tabContent = (JPanel) TabManager.getTabPane().getComponentAt(i);
-                JScrollPane scrollPane = (JScrollPane) ((JPanel)((JPanel) tabContent.getComponent(0)).getComponent(0)).getComponent(0);
-                JPanel checkboxPanel = (JPanel) ((JPanel) scrollPane.getViewport().getView()).getComponent(0);
-
-                try {
-                    for (int j = 0; j < area.getLineCount(); j++) {
-                        int start = area.getLineStartOffset(j);
-                        int end = area.getLineEndOffset(j);
-                        String lineText = area.getText(start, end - start).trim();
-                        if (!lineText.isEmpty()) {
-                            Component comp = checkboxPanel.getComponent(j);
-                            boolean isChecked = comp instanceof JCheckBox cb && cb.isSelected();
-                            contentBuilder.append(isChecked ? "[checked]" : "").append(lineText).append(",");
-                        }
-                    }
-                } catch (Exception ignored) {}
-
-                String label = "tab" + (i + 1) + (isMM ? "[mm]" : "") + "=" + contentBuilder.toString().replaceAll(",$", "");
-                writer.write(CryptoUtil.encrypt(label));
-                writer.newLine();
-            }
+            saveAllTabs(writer);
 
         } catch (IOException e) {
             System.out.println("❌ Failed to write new tab data: " + e.getMessage());
@@ -258,7 +140,6 @@ public class FileManagerUtil {
             throw new RuntimeException(e);
         }
 
-        // Step 4: Replace old file
         if (!dataFile.delete()) {
             System.out.println("⚠️ Could not delete original data.txt. Attempting overwrite.");
         }
@@ -279,5 +160,86 @@ public class FileManagerUtil {
         }
 
         Dialog.SuccessDialog("✅ Tab data saved successfully.");
+    }
+
+    private static int loadTabContent(String decryptedLine) {
+        int tabIndex = Integer.parseInt(decryptedLine.substring(3, decryptedLine.indexOf("=")).replace("[mm]", "")) - 1;
+        boolean isMM = decryptedLine.contains("[mm]");
+        String rawContent = decryptedLine.substring(decryptedLine.indexOf("=") + 1).trim();
+        String[] lines = rawContent.split(",");
+
+        StringBuilder cleanedText = new StringBuilder();
+        List<Boolean> checkedStates = new ArrayList<>();
+
+        for (String entry : lines) {
+            if (entry.startsWith("[checked]")) {
+                checkedStates.add(true);
+                cleanedText.append(entry.replaceFirst("\\[checked\\]", "")).append("\n");
+            } else {
+                checkedStates.add(false);
+                cleanedText.append(entry).append("\n");
+            }
+        }
+
+        while (TabManager.getAllTextAreas().size() <= tabIndex) {
+            TabManager.createAndAddTab("");
+        }
+
+        JTextArea area = TabManager.getAllTextAreas().get(tabIndex);
+        area.setText(cleanedText.toString().trim());
+
+        if (isMM && tabIndex < TabManager.getAllMMCheckboxes().size()) {
+            TabManager.getAllMMCheckboxes().get(tabIndex).setSelected(true);
+        }
+
+        int finalTabIndex = tabIndex;
+        SwingUtilities.invokeLater(() -> {
+            JPanel tabContent = (JPanel) TabManager.getTabPane().getComponentAt(finalTabIndex);
+            JScrollPane scrollPane = (JScrollPane) ((JPanel) ((JPanel) tabContent.getComponent(0)).getComponent(0)).getComponent(0);
+            JPanel checkboxPanel = (JPanel) ((JPanel) scrollPane.getViewport().getView()).getComponent(0);
+
+            for (int j = 0; j < checkedStates.size(); j++) {
+                if (j < checkboxPanel.getComponentCount()) {
+                    Component comp = checkboxPanel.getComponent(j);
+                    if (comp instanceof JCheckBox cb) {
+                        cb.setSelected(checkedStates.get(j));
+                    }
+                }
+            }
+        });
+
+        return tabIndex;
+    }
+
+    private static void saveAllTabs(BufferedWriter writer) throws Exception {
+        List<JTextArea> tabDirFields = TabManager.getAllTextAreas();
+        List<JCheckBox> mmChecks = TabManager.getAllMMCheckboxes();
+
+        for (int i = 0; i < tabDirFields.size(); i++) {
+            JTextArea area = tabDirFields.get(i);
+            boolean isMM = i < mmChecks.size() && mmChecks.get(i).isSelected();
+            StringBuilder contentBuilder = new StringBuilder();
+
+            JPanel tabContent = (JPanel) TabManager.getTabPane().getComponentAt(i);
+            JScrollPane scrollPane = (JScrollPane) ((JPanel)((JPanel) tabContent.getComponent(0)).getComponent(0)).getComponent(0);
+            JPanel checkboxPanel = (JPanel) ((JPanel) scrollPane.getViewport().getView()).getComponent(0);
+
+            try {
+                for (int j = 0; j < area.getLineCount(); j++) {
+                    int start = area.getLineStartOffset(j);
+                    int end = area.getLineEndOffset(j);
+                    String line = area.getText(start, end - start).trim();
+                    if (!line.isEmpty()) {
+                        Component comp = checkboxPanel.getComponent(j);
+                        boolean isChecked = comp instanceof JCheckBox cb && cb.isSelected();
+                        contentBuilder.append(isChecked ? "[checked]" : "").append(line).append(",");
+                    }
+                }
+            } catch (Exception ignored) {}
+
+            String label = "tab" + (i + 1) + (isMM ? "[mm]" : "") + "=" + contentBuilder.toString().replaceAll(",$", "");
+            writer.write(CryptoUtil.encrypt(label));
+            writer.newLine();
+        }
     }
 }

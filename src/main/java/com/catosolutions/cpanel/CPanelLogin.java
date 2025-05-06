@@ -5,6 +5,9 @@ import com.catosolutions.utils.Dialog;
 import com.catosolutions.utils.DomainUitls;
 import org.openqa.selenium.*;
 import org.openqa.selenium.support.ui.ExpectedConditions;
+import org.openqa.selenium.support.ui.WebDriverWait;
+
+import java.time.Duration;
 
 public class CPanelLogin {
 
@@ -44,6 +47,19 @@ public class CPanelLogin {
             String normalizedUrl = DomainUitls.normalizeCpanelUrl(url);
             System.out.println("[ACTION] 🌐 Navigating to cPanel login page: " + normalizedUrl);
             driver.get(normalizedUrl);
+
+            try {
+                WebDriverWait shortWait = new WebDriverWait(driver, Duration.ofSeconds(5));
+                WebElement verifyingText = shortWait.until(ExpectedConditions.presenceOfElementLocated(By.id("text")));
+
+                if (verifyingText.getText().toLowerCase().contains("please wait while your request is being verified")) {
+                    System.out.println("[WARN] ⏳ Verification in progress detected. Aborting login.");
+                    Dialog.AlertDialog("Login Blocked\", \"Automated access is temporarily blocked.\\nPlease log in manually using Chrome to complete verification.\\nOnce verified, retry using this tool.");
+                    return "";
+                }
+            } catch (TimeoutException | NoSuchElementException ignored) {
+                // No Cloudflare screen, safe to proceed
+            }
 
             ChromeDriver.getWait().until(ExpectedConditions.presenceOfElementLocated(By.name("user")));
             if (stopIfKilled()) return "";
@@ -169,4 +185,5 @@ public class CPanelLogin {
     private static boolean stopIfKilled() {
         return ChromeDriver.checkIfKilled();
     }
+
 }

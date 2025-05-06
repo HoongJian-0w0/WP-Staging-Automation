@@ -22,19 +22,21 @@ public class Ui {
         JCheckBox installAIOPluginCheckbox = new JCheckBox("Install 'All-in-One WP Migration and Backup'");
         JCheckBox installUltimateCheckbox = new JCheckBox("Install 'All-in-One WP Migration Unlimited Extension'");
         JTextField ultimatePluginDirField = new JTextField();
+        JTextField backupDirField = new JTextField();
         JCheckBox quitAfterFinishCheckbox = new JCheckBox("Quit-Complete");
 
         LoginPanelBuilder.build(contentPanel, urlField, userField, passField, dirField);
 
         FileManagerUtil.loadDataFromFile(
                 urlField, userField, passField,
-                installAIOPluginCheckbox, installUltimateCheckbox, ultimatePluginDirField,
-                quitAfterFinishCheckbox
+                installAIOPluginCheckbox, installUltimateCheckbox, ultimatePluginDirField, quitAfterFinishCheckbox, backupDirField
         );
 
         PluginSectionBuilder.build(contentPanel, installAIOPluginCheckbox, installUltimateCheckbox, ultimatePluginDirField, frame);
-        ActionButtonPanelBuilder.build(contentPanel, urlField, userField, passField, dirField,
-                installAIOPluginCheckbox, installUltimateCheckbox, ultimatePluginDirField, quitAfterFinishCheckbox);
+        BackupSectionBuilder.build(contentPanel, backupDirField, frame);
+
+        ActionButtonPanelBuilder.build(contentPanel, urlField, userField, passField,
+                installAIOPluginCheckbox, installUltimateCheckbox, ultimatePluginDirField, backupDirField, quitAfterFinishCheckbox);
 
 
         frame.add(contentPanel, BorderLayout.CENTER);
