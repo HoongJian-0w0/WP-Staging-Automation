@@ -9,18 +9,37 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class FileManagerUtil {
-    private static File getDataFile() {
+    private static File ensureDataDirectory() {
         String userHome = System.getProperty("user.home");
         File dir = new File(userHome, "Documents/CatoSolutions");
         if (!dir.exists()) dir.mkdirs();
-        return new File(dir, "data.txt");
+        return dir;
+    }
+
+    private static File getDataFile() {
+        File dir = ensureDataDirectory();
+        File dataFile = new File(dir, "data.txt");
+        if (!dataFile.exists()) {
+            try {
+                dataFile.createNewFile();
+            } catch (IOException e) {
+                System.out.println("❌ Failed to create data.txt: " + e.getMessage());
+            }
+        }
+        return dataFile;
     }
 
     private static File getTempDataFile() {
-        String userHome = System.getProperty("user.home");
-        File dir = new File(userHome, "Documents/CatoSolutions");
-        if (!dir.exists()) dir.mkdirs();
-        return new File(dir, "data_temp.txt");
+        File dir = ensureDataDirectory();
+        File tempFile = new File(dir, "data_temp.txt");
+        if (!tempFile.exists()) {
+            try {
+                tempFile.createNewFile();
+            } catch (IOException e) {
+                System.out.println("❌ Failed to create data_temp.txt: " + e.getMessage());
+            }
+        }
+        return tempFile;
     }
 
     public static JPanel createLabeledPanel(String label, JComponent component) {
@@ -167,76 +186,98 @@ public class FileManagerUtil {
         File dataFile = getDataFile();
         File tempFile = getTempDataFile();
 
-        try {
-            try (BufferedReader reader = new BufferedReader(new FileReader(dataFile));
-                 BufferedWriter writer = new BufferedWriter(new FileWriter(tempFile))) {
+        // Required keys and their defaults
+        String[] requiredKeys = {
+                "cpanel_url", "username", "password",
+                "installAIO", "installAIOU",
+                "ultimatePluginDir", "quitAfterFinish"
+        };
 
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    try {
-                        String decrypted = CryptoUtil.decrypt(line);
-                        if (!decrypted.startsWith("tab")) {
-                            writer.write(line);
-                            writer.newLine();
-                        }
-                    } catch (Exception ignored) {
+        // Step 1: Read all non-tab lines into map
+        java.util.Map<String, String> dataMap = new java.util.HashMap<>();
+        try (BufferedReader reader = new BufferedReader(new FileReader(dataFile))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                try {
+                    String decrypted = CryptoUtil.decrypt(line);
+                    if (!decrypted.startsWith("tab") && decrypted.contains("=")) {
+                        String key = decrypted.substring(0, decrypted.indexOf("="));
+                        String value = decrypted.substring(decrypted.indexOf("=") + 1);
+                        dataMap.put(key, value);
                     }
-                }
+                } catch (Exception ignored) {}
+            }
+        } catch (IOException e) {
+            System.out.println("❌ Failed to read existing data: " + e.getMessage());
+            return;
+        }
 
-                List<JTextArea> tabDirFields = TabManager.getAllTextAreas();
-                List<JCheckBox> mmChecks = TabManager.getAllMMCheckboxes();
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(tempFile))) {
 
-                for (int i = 0; i < tabDirFields.size(); i++) {
-                    JTextArea area = tabDirFields.get(i);
-                    boolean isMM = i < mmChecks.size() && mmChecks.get(i).isSelected();
-                    StringBuilder contentBuilder = new StringBuilder();
+            for (String key : requiredKeys) {
+                String value = dataMap.getOrDefault(key, "");
+                writer.write(CryptoUtil.encrypt(key + "=" + value));
+                writer.newLine();
+            }
 
-                    JPanel tabContent = (JPanel) TabManager.getTabPane().getComponentAt(i);
-                    JScrollPane scrollPane = (JScrollPane) ((JPanel)((JPanel) tabContent.getComponent(0)).getComponent(0)).getComponent(0);
-                    JPanel checkboxPanel = (JPanel) ((JPanel) scrollPane.getViewport().getView()).getComponent(0);
+            // Step 3: Write updated tab data
+            List<JTextArea> tabDirFields = TabManager.getAllTextAreas();
+            List<JCheckBox> mmChecks = TabManager.getAllMMCheckboxes();
 
-                    try {
-                        for (int j = 0; j < area.getLineCount(); j++) {
-                            int start = area.getLineStartOffset(j);
-                            int end = area.getLineEndOffset(j);
-                            String lineText = area.getText(start, end - start).trim();
-                            if (!lineText.isEmpty()) {
-                                Component comp = checkboxPanel.getComponent(j);
-                                boolean isChecked = comp instanceof JCheckBox cb && cb.isSelected();
-                                contentBuilder.append(isChecked ? "[checked]" : "").append(lineText).append(",");
-                            }
+            for (int i = 0; i < tabDirFields.size(); i++) {
+                JTextArea area = tabDirFields.get(i);
+                boolean isMM = i < mmChecks.size() && mmChecks.get(i).isSelected();
+                StringBuilder contentBuilder = new StringBuilder();
+
+                JPanel tabContent = (JPanel) TabManager.getTabPane().getComponentAt(i);
+                JScrollPane scrollPane = (JScrollPane) ((JPanel)((JPanel) tabContent.getComponent(0)).getComponent(0)).getComponent(0);
+                JPanel checkboxPanel = (JPanel) ((JPanel) scrollPane.getViewport().getView()).getComponent(0);
+
+                try {
+                    for (int j = 0; j < area.getLineCount(); j++) {
+                        int start = area.getLineStartOffset(j);
+                        int end = area.getLineEndOffset(j);
+                        String lineText = area.getText(start, end - start).trim();
+                        if (!lineText.isEmpty()) {
+                            Component comp = checkboxPanel.getComponent(j);
+                            boolean isChecked = comp instanceof JCheckBox cb && cb.isSelected();
+                            contentBuilder.append(isChecked ? "[checked]" : "").append(lineText).append(",");
                         }
-                    } catch (Exception ignored) {}
-
-                    String label = "tab" + (i + 1) + (isMM ? "[mm]" : "") + "=" + contentBuilder.toString().replaceAll(",$", "");
-                    writer.write(CryptoUtil.encrypt(label));
-                    writer.newLine();
-                }
-
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-
-            if (!dataFile.delete()) {
-                System.out.println("⚠️ Warning: Couldn't delete original file. Trying overwrite.");
-            }
-
-            if (!tempFile.renameTo(dataFile)) {
-                try (InputStream in = new FileInputStream(tempFile);
-                     OutputStream out = new FileOutputStream(dataFile)) {
-                    byte[] buffer = new byte[8192];
-                    int len;
-                    while ((len = in.read(buffer)) > 0) {
-                        out.write(buffer, 0, len);
                     }
-                }
-                tempFile.delete();
-            }
+                } catch (Exception ignored) {}
 
-            Dialog.SuccessDialog("Tab data saved successfully.");
+                String label = "tab" + (i + 1) + (isMM ? "[mm]" : "") + "=" + contentBuilder.toString().replaceAll(",$", "");
+                writer.write(CryptoUtil.encrypt(label));
+                writer.newLine();
+            }
 
         } catch (IOException e) {
-            System.out.println("❌ Failed to save tab data: " + e.getMessage());
+            System.out.println("❌ Failed to write new tab data: " + e.getMessage());
+            return;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
+
+        // Step 4: Replace old file
+        if (!dataFile.delete()) {
+            System.out.println("⚠️ Could not delete original data.txt. Attempting overwrite.");
+        }
+
+        if (!tempFile.renameTo(dataFile)) {
+            try (InputStream in = new FileInputStream(tempFile);
+                 OutputStream out = new FileOutputStream(dataFile)) {
+                byte[] buffer = new byte[8192];
+                int len;
+                while ((len = in.read(buffer)) > 0) {
+                    out.write(buffer, 0, len);
+                }
+            } catch (IOException e) {
+                System.out.println("❌ Backup copy to data.txt failed: " + e.getMessage());
+                return;
+            }
+            tempFile.delete();
+        }
+
+        Dialog.SuccessDialog("✅ Tab data saved successfully.");
     }
 }
