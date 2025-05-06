@@ -53,7 +53,17 @@ public class ActionButtonPanelBuilder {
             boolean quitAfter = quitCheckbox.isSelected();
 
             int activeTabIndex = TabManager.getTabbedPane().getSelectedIndex();
-            String directory = getDirectoryFromActiveTab(activeTabIndex);
+
+            List<String> dirs = TabManager.getCheckedDirectoriesFromActiveTab();
+            StringBuilder result = new StringBuilder();
+            for (String dir : dirs) {
+                result.append(dir).append(", ");
+            }
+            if (result.length() >= 2) {
+                result.setLength(result.length() - 2);
+            }
+            String directory = String.valueOf(result);
+
             if (directory == null) return;
 
             if (url.isEmpty() || username.isEmpty() || password.isEmpty() || directory.isEmpty()) {
@@ -97,7 +107,17 @@ public class ActionButtonPanelBuilder {
             boolean quitAfter = quitCheckbox.isSelected();
 
             int activeTabIndex = TabManager.getTabbedPane().getSelectedIndex();
-            String directory = getDirectoryFromActiveTab(activeTabIndex);
+
+            List<String> dirs = TabManager.getCheckedDirectoriesFromActiveTab();
+            StringBuilder result = new StringBuilder();
+            for (String dir : dirs) {
+                result.append(dir).append(", ");
+            }
+            if (result.length() >= 2) {
+                result.setLength(result.length() - 2);
+            }
+            String directory = String.valueOf(result);
+
             if (directory == null) return;
 
             if (url.isEmpty() || username.isEmpty() || password.isEmpty() || directory.isEmpty()) {
@@ -133,16 +153,6 @@ public class ActionButtonPanelBuilder {
 
         panel.add(Box.createVerticalStrut(10));
         panel.add(buttonPanel);
-    }
-
-    private static String getDirectoryFromActiveTab(int activeTabIndex) {
-        List<JTextArea> dirFields = TabManager.getTextAreas();
-        if (activeTabIndex < dirFields.size()) {
-            return dirFields.get(activeTabIndex).getText().trim();
-        } else {
-            Dialog.ErrorDialog("Directory field not found for the selected tab.");
-            return null;
-        }
     }
 
     private static boolean validateUltimatePluginDirectory(String path) {
