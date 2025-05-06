@@ -27,21 +27,27 @@ public class ActionButtonPanelBuilder {
         backupBtnPanel.add(new JLabel("Backup :"));
         JButton uploadButton = new JButton("Upload");
         JButton restoreButton = new JButton("Restore");
+        JButton backupKillButton = new JButton("Terminate");
         backupBtnPanel.add(uploadButton);
         backupBtnPanel.add(restoreButton);
+        backupBtnPanel.add(backupKillButton);
         buttonPanel.add(backupBtnPanel);
 
         JPanel actionBtnPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
         actionBtnPanel.add(new JLabel("Action   :"));
-        JButton submitBtn = new JButton("Install");
-        JButton killButton = new JButton("Stop");
+        JButton submitBtn = new JButton(" Install ");
+        JButton killButton = new JButton("Terminate");
         JButton removeButton = new JButton("Remove");
         JButton logButton = new JButton("Log");
         actionBtnPanel.add(submitBtn);
-        actionBtnPanel.add(killButton);
         actionBtnPanel.add(removeButton);
-        actionBtnPanel.add(logButton);
+        actionBtnPanel.add(killButton);
         actionBtnPanel.add(quitCheckbox);
+        actionBtnPanel.add(Box.createHorizontalGlue());
+        actionBtnPanel.add(Box.createRigidArea(new Dimension(40, 0))); // 20px left margin
+        actionBtnPanel.add(logButton);
+        actionBtnPanel.add(logButton);
+
         buttonPanel.add(actionBtnPanel);
 
         panel.add(Box.createVerticalStrut(10));
