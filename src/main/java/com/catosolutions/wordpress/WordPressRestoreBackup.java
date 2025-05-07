@@ -16,7 +16,7 @@ import java.util.*;
 public class WordPressRestoreBackup {
 
     private static void terminateWithMessage(WebDriver driver, String message) {
-        System.out.println("[RESTORE] ❌ " + message);
+        System.out.println("[ERR] ❌ " + message);
         Dialog.AlertDialog("🛑 Restore terminated: " + message);
         if (driver != null) {
             try {
@@ -29,11 +29,14 @@ public class WordPressRestoreBackup {
         new Thread(() -> {
             Map<String, String> failedDomains = new HashMap<>();
 
+            System.out.println("[INFO] 🔄 Restore process started...");
+
             if (Ui.restoreShouldStop) {
                 terminateWithMessage(null, "Cancelled before start.");
                 return;
             }
 
+            System.out.println("[INFO] 🔐 Validating session login...");
             String sessionToken = CPanelLogin.ensureValidLogin(url, username, password);
             if (Ui.restoreShouldStop || sessionToken.isEmpty()) {
                 terminateWithMessage(null, "Login failed or session could not be established.");
@@ -47,6 +50,7 @@ public class WordPressRestoreBackup {
             }
 
             String loginUrl = DomainUitls.normalizeCpanelUrl(url);
+            System.out.println("[INFO] 🌐 Navigating to cPanel login URL...");
             driver.get(loginUrl);
             ChromeDriver.syncCookiesToRestoreDriver(url, username, password);
             driver.navigate().refresh();
@@ -56,7 +60,7 @@ public class WordPressRestoreBackup {
             try {
                 Thread.sleep(3000);
             } catch (InterruptedException e) {
-                e.printStackTrace();
+                System.out.println("[ERR] ⚠️ Sleep interrupted: " + e.getMessage());
             }
 
             String managerTabHandle = driver.getWindowHandle();
@@ -67,7 +71,7 @@ public class WordPressRestoreBackup {
                     return;
                 }
 
-                System.out.println("\n[RESTORE] \uD83D\uDD01 Processing: " + targetDir);
+                System.out.println("\n[INFO] 🔁 Processing: " + targetDir);
                 try {
                     String wpManagerUrl = loginUrl + sessionToken + "/frontend/jupiter/softaculous/index.live.php?act=wordpress";
                     driver.switchTo().window(managerTabHandle);
@@ -88,12 +92,12 @@ public class WordPressRestoreBackup {
                             String siteName = form.findElement(By.cssSelector("div.col-12.col-md-2 > span.title")).getText().trim();
 
                             if (!installDir.equals(targetDir)) {
-                                System.out.println("[SKIP] \u274C Domain does not match any target: " + siteUrl);
+                                System.out.println("[WARM] ⏭️ Domain does not match target: " + siteUrl);
                                 continue;
                             }
 
                             if (!siteName.equalsIgnoreCase("My Blog")) {
-                                System.out.println("[SKIP] \u23E9 Already customized: " + siteUrl + " (Title: " + siteName + ")");
+                                System.out.println("[WARM] ⏩ Already customized: " + siteUrl + " (Title: " + siteName + ")");
                                 matched = true;
                                 break;
                             }
@@ -124,6 +128,7 @@ public class WordPressRestoreBackup {
 
                             boolean pluginInstalled = driver.findElements(By.id("toplevel_page_ai1wm_export")).size() > 0;
                             if (!pluginInstalled) {
+                                System.out.println("[WARM] ⚠️ Plugin not installed for: " + targetDir);
                                 failedDomains.put(targetDir, "Plugin not installed");
                                 matched = true;
                                 break;
@@ -147,6 +152,7 @@ public class WordPressRestoreBackup {
                             }
 
                             if (latestRow == null) {
+                                System.out.println("[WARM] ⚠️ No backup found to restore.");
                                 failedDomains.put(targetDir, "No backup file found to restore");
                                 continue;
                             }
@@ -178,7 +184,8 @@ public class WordPressRestoreBackup {
                             WebElement proceedBtn = driver.findElement(By.cssSelector(".ai1wm-import-modal-actions .ai1wm-button-green"));
                             Thread.sleep(1000);
                             proceedBtn.click();
-                            System.out.println("[DONE] \uD83D\uDD04 Restore triggered successfully for: " + targetDir);
+
+                            System.out.println("[INFO] ✅ Restore triggered successfully for: " + targetDir);
                             matched = true;
 
                             Thread.sleep(3000);
@@ -193,7 +200,7 @@ public class WordPressRestoreBackup {
 
                     if (!matched) {
                         String msg = "No matching WordPress installation found.";
-                        System.out.println("[DONE] ⚠️ " + msg);
+                        System.out.println("[WARM] ⚠️ " + msg);
                         failedDomains.put(targetDir, msg);
                     }
 
@@ -209,14 +216,12 @@ public class WordPressRestoreBackup {
                 failedDomains.forEach((domain, reason) -> {
                     summary.append(" - ").append(domain).append(": ").append(reason).append("\n");
                 });
+                System.out.println(summary);
                 Dialog.ErrorDialog(summary.toString());
             }
 
+            System.out.println("[INFO] 🎉 All restore operations attempted.");
             Dialog.SuccessDialog("All restore operations attempted.");
-
-            try {
-                driver.quit();
-            } catch (Exception ignored) {}
 
         }).start();
     }

@@ -8,6 +8,9 @@ public class Ui {
     public static volatile boolean shouldStop = false;
     public static volatile boolean uploadShouldStop = false;
     public static volatile boolean restoreShouldStop = false;
+    public static volatile boolean mainDriverLock = false;
+    public static volatile boolean uploadDriverLock = false;
+    public static volatile boolean restoreDriverLock = false;
 
     public static void loadUi() {
         JFrame frame = MainFrameFactory.createMainFrame();
