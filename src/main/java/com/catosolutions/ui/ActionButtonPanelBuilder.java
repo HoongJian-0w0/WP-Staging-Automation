@@ -61,6 +61,7 @@ public class ActionButtonPanelBuilder {
                 boolean confirm = Dialog.ConfirmationDialog("Are you sure you want to terminate the running automation?");
                 if (confirm) {
                     Ui.shouldStop = true;
+                    Ui.mainDriverLock = false;
                     Dialog.AlertDialog("⚠️ Kill signal sent. The automation will stop shortly.");
                 }
             } else {
@@ -71,6 +72,11 @@ public class ActionButtonPanelBuilder {
         logButton.addActionListener(e -> LogWindowManager.open());
 
         submitBtn.addActionListener(e -> {
+            if (Ui.mainDriverLock) {
+                Dialog.AlertDialog("⚠️ Another automation is running. Please wait or terminate the current process first.");
+                return;
+            }
+
             if (TabManager.hasDuplicateDirectories()) return;
 
             Ui.shouldStop = false;
@@ -127,6 +133,11 @@ public class ActionButtonPanelBuilder {
         });
 
         removeButton.addActionListener(e -> {
+            if (Ui.mainDriverLock) {
+                Dialog.AlertDialog("⚠️ Another automation is running. Please wait or terminate the current process first.");
+                return;
+            }
+
             if (TabManager.hasDuplicateDirectories()) return;
 
             boolean confirmRemove = Dialog.ConfirmationDialog("Are you sure you want to remove the selected installations?");
@@ -181,6 +192,16 @@ public class ActionButtonPanelBuilder {
         });
 
         uploadButton.addActionListener(e -> {
+            if (Ui.uploadDriverLock) {
+                Dialog.AlertDialog("⚠️ Upload process is already running.");
+                return;
+            }
+
+            if (Ui.mainDriverLock) {
+                Dialog.AlertDialog("⚠️ Cannot start upload/restore while Install/Remove is in progress. Please wait or terminate it first.");
+                return;
+            }
+
             Ui.uploadShouldStop = false;
             Log.redirectOutputTo();
 
@@ -241,10 +262,12 @@ public class ActionButtonPanelBuilder {
             switch (choice) {
                 case 0:
                     Ui.uploadShouldStop = true;
+                    Ui.uploadDriverLock = false;
                     Dialog.AlertDialog("⚠️ Upload termination signal sent. The upload process will stop shortly.");
                     break;
                 case 1:
                     Ui.restoreShouldStop = true;
+                    Ui.restoreDriverLock = false;
                     Dialog.AlertDialog("⚠️ Restore termination signal sent. The restore process will stop shortly.");
                     break;
                 default:
@@ -253,6 +276,16 @@ public class ActionButtonPanelBuilder {
         });
 
         restoreButton.addActionListener(e -> {
+            if (Ui.restoreDriverLock) {
+                Dialog.AlertDialog("⚠️ Restore process is already running.");
+                return;
+            }
+
+            if (Ui.mainDriverLock) {
+                Dialog.AlertDialog("⚠️ Cannot start upload/restore while Install/Remove is in progress. Please wait or terminate it first.");
+                return;
+            }
+
             Ui.restoreShouldStop = false;
             Log.redirectOutputTo();
 

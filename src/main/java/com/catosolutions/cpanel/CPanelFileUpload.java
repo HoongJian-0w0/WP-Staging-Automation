@@ -27,6 +27,8 @@ public class CPanelFileUpload {
     public static void uploadBackupFiles(String url, String username, String password,
                                          List<String> originalDomains, List<String> domains, String backupDir) {
         new Thread(() -> {
+            Ui.uploadDriverLock = true;
+
             WebDriver driver = null;
             try {
                 System.out.println("[INFO] 🟢 Upload thread started");
@@ -173,6 +175,8 @@ public class CPanelFileUpload {
                 e.printStackTrace();
                 Dialog.ErrorDialog("Upload error:\n" + e.getMessage());
                 System.out.println("[ERR] ❌ Upload failed with exception: " + e.getMessage());
+            } finally {
+                Ui.uploadDriverLock = false;
             }
         }).start();
     }

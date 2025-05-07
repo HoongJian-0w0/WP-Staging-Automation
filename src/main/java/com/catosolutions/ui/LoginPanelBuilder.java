@@ -76,13 +76,32 @@ public class LoginPanelBuilder {
             }
 
             boolean confirm = Dialog.ConfirmationDialog("Clear current tab content?");
-            if (confirm) {
-                JTextArea area = TabManager.getAllTextAreas().get(selectedIndex);
-                JCheckBox mm = TabManager.getAllMMCheckboxes().get(selectedIndex);
-                area.setText("");
-                mm.setSelected(false);
-                Dialog.SuccessDialog("Current tab cleared.");
+            if (!confirm) return;
+
+            JTextArea area = TabManager.getAllTextAreas().get(selectedIndex);
+            JCheckBox mm = TabManager.getAllMMCheckboxes().get(selectedIndex);
+            area.setText("");
+            mm.setSelected(false);
+
+            JPanel tabContent = (JPanel) tabbedPane.getComponentAt(selectedIndex);
+            JPanel contentWrapper = (JPanel) tabContent.getComponent(0);
+            JScrollPane scrollPane = (JScrollPane) ((JPanel) contentWrapper.getComponent(0)).getComponent(0);
+            JPanel checkboxPanel = (JPanel) ((JPanel) scrollPane.getViewport().getView()).getComponent(0);
+            JPanel bottomPanel = (JPanel) contentWrapper.getComponent(1);
+
+            for (Component comp : bottomPanel.getComponents()) {
+                if (comp instanceof JCheckBox cb && "All".equals(cb.getText())) {
+                    cb.setSelected(false);
+                }
             }
+
+            for (Component comp : checkboxPanel.getComponents()) {
+                if (comp instanceof JCheckBox cb) {
+                    cb.setSelected(false);
+                }
+            }
+
+            Dialog.SuccessDialog("Current tab cleared.");
         });
 
         JLabel automationNote = new JLabel("(Automation for domain splitting applied)");

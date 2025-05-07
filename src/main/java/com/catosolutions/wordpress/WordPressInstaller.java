@@ -22,6 +22,7 @@ public class WordPressInstaller {
 
         skippedDirs.clear();
 
+        Ui.mainDriverLock = true;
         System.out.println("[START] 🛠️ WordPress Install Automation Running...");
 
         WebDriver driver = ChromeDriver.getDriver();
@@ -177,6 +178,8 @@ public class WordPressInstaller {
             ex.printStackTrace();
             Dialog.ErrorDialog("An error occurred:\n" + ex.getMessage());
         } finally {
+            Ui.mainDriverLock = false;
+
             if (!skippedDirs.isEmpty()) {
                 String skipped = String.join("\n• ", skippedDirs);
                 Dialog.AlertDialog("⚠️ The following directories were skipped due to existing installations:\n• " + skipped);

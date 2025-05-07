@@ -14,6 +14,9 @@ import java.util.List;
 public class WordPressRemover {
 
     public static void runRemoveAutomation(String baseUrl, String username, String password, List<String> directories, boolean quitAfterFinish) {
+
+        Ui.mainDriverLock = true;
+
         System.out.println("[START] 🗑️ Starting WordPress Removal Automation");
 
         WebDriver driver = ChromeDriver.getDriver();
@@ -118,6 +121,8 @@ public class WordPressRemover {
             ex.printStackTrace();
             Dialog.ErrorDialog("An error occurred:\n" + ex.getMessage());
         } finally {
+            Ui.mainDriverLock = false;
+
             if (Ui.shouldStop) {
                 System.out.println("[STOP] ⛔ User manually stopped the automation.");
                 Dialog.AlertDialog("⛔ Automation was terminated by user.");

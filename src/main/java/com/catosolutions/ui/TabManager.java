@@ -169,7 +169,7 @@ public class TabManager {
         ensurePlusTabVisible(tabbedPane);
     }
 
-    private static void syncCheckboxesWithText(JTextArea textArea, JPanel checkboxPanel, JCheckBox allCheck) {
+    public static void syncCheckboxesWithText(JTextArea textArea, JPanel checkboxPanel, JCheckBox allCheck) {
         int newLineCount = textArea.getLineCount();
 
         List<Boolean> oldStates = new ArrayList<>();
