@@ -1,6 +1,7 @@
 package com.catosolutions.cpanel;
 
 import com.catosolutions.chromedriver.ChromeDriver;
+import com.catosolutions.ui.Ui;
 import com.catosolutions.utils.Dialog;
 import com.catosolutions.utils.DomainUitls;
 import com.catosolutions.utils.WordPressBackupFinder;
@@ -10,43 +11,72 @@ import org.openqa.selenium.support.ui.WebDriverWait;
 
 import java.time.Duration;
 import java.util.*;
+import java.util.NoSuchElementException;
 
 public class CPanelFileUpload {
+
+    private static void terminateWithMessage(WebDriver driver, String message) {
+        System.out.println("[UPLOAD] ❌ " + message);
+        Dialog.AlertDialog("🛑 Upload terminated: " + message);
+        if (driver != null) {
+            try {
+                driver.quit();
+            } catch (Exception ignored) {}
+        }
+    }
 
     public static void uploadBackupFiles(String url, String username, String password,
                                          List<String> originalDomains, List<String> domains, String backupDir) {
         new Thread(() -> {
+            WebDriver driver = null;
             try {
-                // Step 1: Ensure session is valid BEFORE launching upload driver
-                String sessionToken = CPanelLogin.ensureValidLogin(url, username, password);
-                if (sessionToken.isEmpty()) {
-                    Dialog.ErrorDialog("❌ Login failed or session could not be established.");
+                if (Ui.uploadShouldStop) {
+                    terminateWithMessage(driver, "Cancelled before start.");
                     return;
                 }
 
-                // Step 2: Now launch upload browser and sync cookies
-                WebDriver driver = ChromeDriver.getUploadDriver();
-                if (driver == null) {
-                    Dialog.ErrorDialog("Failed to launch upload browser.");
+                String sessionToken = CPanelLogin.ensureValidLogin(url, username, password);
+                if (Ui.uploadShouldStop || sessionToken.isEmpty()) {
+                    terminateWithMessage(driver, "Login failed or session could not be established.");
+                    return;
+                }
+
+                driver = ChromeDriver.getUploadDriver();
+                if (Ui.uploadShouldStop || driver == null) {
+                    terminateWithMessage(driver, "Browser launch failed.");
                     return;
                 }
 
                 String loginUrl = DomainUitls.normalizeCpanelUrl(url);
-                driver.get(loginUrl); // Load the base URL before syncing cookies
-                ChromeDriver.syncCookiesToUploadDriver(); // Sync cookies from main to upload driver
-                driver.navigate().refresh(); // Refresh to apply session
+                driver.get(loginUrl);
+                ChromeDriver.syncCookiesToUploadDriver(url, username, password);
+                driver.navigate().refresh();
 
                 WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(30));
 
                 String fileManagerUrl = loginUrl + sessionToken + "/frontend/jupiter/filemanager/index.html";
                 driver.get(fileManagerUrl);
-                wait.until(ExpectedConditions.presenceOfElementLocated(By.xpath("//span[text()='public_html']"))).click();
+                if (Ui.uploadShouldStop) {
+                    terminateWithMessage(driver, "Terminated before navigation.");
+                    return;
+                }
+
+                try {
+                    wait.until(ExpectedConditions.presenceOfElementLocated(By.xpath("//span[text()='public_html']"))).click();
+                } catch (TimeoutException e) {
+                    Dialog.ErrorDialog("❌ 'public_html' folder not found in File Manager. Cannot proceed with upload.");
+                    return;
+                }
 
                 Map<String, String> tabMap = new LinkedHashMap<>();
                 Map<String, String> skippedDomains = new LinkedHashMap<>();
 
-                // Phase 1: Trigger uploads
                 for (int i = 0; i < originalDomains.size(); i++) {
+                    if (Ui.uploadShouldStop) {
+                        terminateWithMessage(driver, "Terminated during upload loop.");
+                        return;
+                    }
+
                     String domain = originalDomains.get(i);
                     String folder = (i < domains.size()) ? domains.get(i) : null;
                     if (folder == null) continue;
@@ -67,35 +97,22 @@ public class CPanelFileUpload {
 
                     try {
                         WebDriverWait uploadWait = new WebDriverWait(driver, Duration.ofSeconds(30));
+                        if (Ui.uploadShouldStop) {
+                            terminateWithMessage(driver, "Terminated during upload prep.");
+                            return;
+                        }
+
                         uploadWait.until(ExpectedConditions.presenceOfElementLocated(By.xpath("//span[text()='public_html']"))).click();
                         Thread.sleep(500);
 
-                        try {
-                            uploadWait.until(ExpectedConditions.presenceOfElementLocated(By.xpath("//span[text()='" + folder + "']"))).click();
-                        } catch (Exception e) {
-                            skippedDomains.put(domain, "Folder '" + folder + "' not found.");
-                            driver.close();
-                            continue;
-                        }
+                        WebElement folderElement = uploadWait.until(
+                                ExpectedConditions.elementToBeClickable(By.xpath("//span[normalize-space()='" + folder + "']")));
+                        folderElement.click();
 
                         Thread.sleep(500);
-                        try {
-                            uploadWait.until(ExpectedConditions.presenceOfElementLocated(By.xpath("//span[text()='wp-content']"))).click();
-                        } catch (Exception e) {
-                            skippedDomains.put(domain, "Folder 'wp-content' not found.");
-                            driver.close();
-                            continue;
-                        }
-
+                        uploadWait.until(ExpectedConditions.presenceOfElementLocated(By.xpath("//span[text()='wp-content']"))).click();
                         Thread.sleep(500);
-                        try {
-                            uploadWait.until(ExpectedConditions.presenceOfElementLocated(By.xpath("//span[text()='ai1wm-backups']"))).click();
-                        } catch (Exception e) {
-                            skippedDomains.put(domain, "Folder 'ai1wm-backups' not found. Plugin may not be installed.");
-                            driver.close();
-                            continue;
-                        }
-
+                        uploadWait.until(ExpectedConditions.presenceOfElementLocated(By.xpath("//span[text()='ai1wm-backups']"))).click();
                         Thread.sleep(500);
 
                         Set<String> tabsBeforeClick = new HashSet<>(driver.getWindowHandles());
@@ -114,22 +131,36 @@ public class CPanelFileUpload {
                         String uploadTab = tabsAfterClick.iterator().next();
                         driver.switchTo().window(uploadTab);
                         uploadWait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("input[type='file']"))).sendKeys(backupPath);
+                        Thread.sleep(2000);
+
+                        boolean fileExistsDialog = false;
+                        try {
+                            WebElement overwriteDialog = driver.findElement(By.id("sdlg1"));
+                            if (overwriteDialog.isDisplayed()) {
+                                skippedDomains.put(domain, "File already exists. Assumed already uploaded.");
+                                fileExistsDialog = true;
+                            }
+                        } catch (NoSuchElementException ignored) {}
+
+                        if (fileExistsDialog) {
+                            try { driver.close(); } catch (Exception ignored) {}
+                            try { driver.switchTo().window(navTab); driver.close(); } catch (Exception ignored) {}
+                            driver.switchTo().window(allTabs.get(0));
+                            continue;
+                        }
+
                         System.out.println("[" + domain + "] ✅ Upload triggered in upload tab.");
-
-                        driver.switchTo().window(navTab);
-                        driver.close();
-
+                        driver.switchTo().window(navTab); driver.close();
                         driver.switchTo().window(uploadTab);
                         tabMap.put(uploadTab, domain);
 
                     } catch (Exception e) {
                         skippedDomains.put(domain, "Upload setup failed: " + e.getMessage());
-                        driver.close();
+                        try { driver.close(); } catch (Exception ignored) {}
                         driver.switchTo().window(allTabs.get(0));
                     }
                 }
 
-                // Phase 2: Sequential monitoring loop
                 Map<String, Boolean> completed = new HashMap<>();
                 for (String tab : tabMap.keySet()) {
                     completed.put(tab, false);
@@ -139,6 +170,11 @@ public class CPanelFileUpload {
                 long timeout = Duration.ofMinutes(20).toMillis();
 
                 while (true) {
+                    if (Ui.uploadShouldStop) {
+                        terminateWithMessage(driver, "Terminated during monitoring.");
+                        return;
+                    }
+
                     boolean allDone = true;
 
                     for (Map.Entry<String, String> entry : tabMap.entrySet()) {
@@ -146,82 +182,26 @@ public class CPanelFileUpload {
                         String domain = entry.getValue();
 
                         if (completed.get(tabHandle)) continue;
-
                         try {
                             driver.switchTo().window(tabHandle);
-
-                            try {
-                                WebDriverWait tabWait = new WebDriverWait(driver, Duration.ofSeconds(15));
-                                tabWait.until(ExpectedConditions.presenceOfElementLocated(By.id("progress1")));
-                            } catch (TimeoutException te) {
-                                System.out.println("[" + domain + "] ⚠️ Timeout: #progress1 not found after 15s.");
-                                completed.put(tabHandle, true);
-                                continue;
-                            }
+                            WebDriverWait tabWait = new WebDriverWait(driver, Duration.ofSeconds(15));
+                            tabWait.until(ExpectedConditions.presenceOfElementLocated(By.id("progress1")));
 
                             WebElement progressContainer = driver.findElement(By.id("progress1"));
-                            String style = progressContainer.getAttribute("style");
-
-                            String barClass = "";
-                            try {
-                                WebElement innerBar = progressContainer.findElement(By.className("progress-bar"));
-                                barClass = innerBar.getAttribute("class");
-                                System.out.println("[" + domain + "] Progress bar class: " + barClass);
-                            } catch (Exception e) {
-                            }
-
+                            String barClass = progressContainer.findElement(By.className("progress-bar")).getAttribute("class");
                             String percentText = progressContainer.getText().replace("%", "").trim();
                             int percent = percentText.matches("\\d+") ? Integer.parseInt(percentText) : -1;
-
                             System.out.println("[" + domain + "] ⏳ Uploading... " + percent + "%");
 
-                            boolean isSuccess = barClass.contains("progress-bar-success");
-                            boolean isFailed = barClass.contains("progress-bar-danger");
-
-                            WebElement stats = null;
-                            try {
-                                stats = driver.findElement(By.id("uploaderstats1"));
-                            } catch (Exception ignored) {}
-
-                            String status = stats != null ? stats.getText().toLowerCase() : "";
-                            boolean isHttp500 = status.contains("http error 500");
-                            boolean isCancelled = status.contains("cancelled");
-
-                            boolean isComplete = isSuccess || isFailed || isCancelled || isHttp500;
-
-                            if (style.contains("width: 100%") && !isComplete) {
-                                System.out.println("[" + domain + "] ⚠️ Progress full but bar not green/red yet.");
-                            }
+                            boolean isComplete = barClass.contains("progress-bar-success") ||
+                                    barClass.contains("progress-bar-danger") ||
+                                    driver.findElement(By.id("uploaderstats1")).getText().toLowerCase().contains("cancelled");
 
                             if (isComplete) {
-                                if (isHttp500) {
-                                    System.out.println("[" + domain + "] ⚠️ HTTP 500 but full bar – assuming success.");
-                                } else if (isCancelled) {
-                                    System.out.println("[" + domain + "] ❌ Upload was cancelled.");
-                                } else if (isFailed) {
-                                    String errorDetail = "(no error message)";
-                                    try {
-                                        WebElement errorStats = driver.findElement(By.id("uploaderstats1"));
-                                        String text = errorStats.getText().trim();
-                                        if (!text.isEmpty()) errorDetail = text;
-                                    } catch (Exception ignored) {}
-                                    System.out.println("[" + domain + "] ❌ Upload failed (red bar): " + errorDetail);
-                                } else {
-                                    System.out.println("[" + domain + "] ✅ Upload completed.");
-                                }
-
+                                System.out.println("[" + domain + "] ✅ Upload completed.");
                                 completed.put(tabHandle, true);
-
-                                try {
-                                    driver.close();
-                                } catch (Exception ignored) {}
-
-                                try {
-                                    Set<String> handles = driver.getWindowHandles();
-                                    if (!handles.isEmpty()) {
-                                        driver.switchTo().window(handles.iterator().next());
-                                    }
-                                } catch (Exception ignored) {}
+                                try { driver.close(); } catch (Exception ignored) {}
+                                driver.switchTo().window(driver.getWindowHandles().iterator().next());
                             } else {
                                 allDone = false;
                             }
@@ -233,6 +213,7 @@ public class CPanelFileUpload {
                     }
 
                     if (allDone || (System.currentTimeMillis() - start > timeout)) break;
+                    if (Ui.uploadShouldStop) return;
                     Thread.sleep(6000);
                 }
 
@@ -247,11 +228,21 @@ public class CPanelFileUpload {
                     }
                     summary.append("--- End of Skipped List ---\n");
                     Dialog.AlertDialog(summary.toString());
+                    System.out.println("[UPLOAD] ⚠️ Upload completed with skipped domains.");
+                } else {
+                    Dialog.SuccessDialog("✅ All backups uploaded successfully!");
+                    System.out.println("[UPLOAD] ✅ All uploads completed successfully.");
                 }
 
             } catch (Exception e) {
                 e.printStackTrace();
                 Dialog.ErrorDialog("Upload error:\n" + e.getMessage());
+            } finally {
+                if (driver != null) {
+                    try {
+                        driver.quit();
+                    } catch (Exception ignored) {}
+                }
             }
         }).start();
     }

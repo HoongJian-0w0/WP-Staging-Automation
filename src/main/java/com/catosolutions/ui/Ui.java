@@ -6,6 +6,8 @@ import java.awt.*;
 
 public class Ui {
     public static volatile boolean shouldStop = false;
+    public static volatile boolean uploadShouldStop = false;
+    public static volatile boolean restoreShouldStop = false;
 
     public static void loadUi() {
         JFrame frame = MainFrameFactory.createMainFrame();

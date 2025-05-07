@@ -7,6 +7,7 @@ import com.catosolutions.utils.Log;
 import com.catosolutions.wordpress.WordPressInstaller;
 import com.catosolutions.wordpress.WordPressRemover;
 import com.catosolutions.cpanel.CPanelFileUpload;
+import com.catosolutions.wordpress.WordPressRestoreBackup;
 
 import javax.swing.*;
 import java.awt.*;
@@ -180,7 +181,7 @@ public class ActionButtonPanelBuilder {
         });
 
         uploadButton.addActionListener(e -> {
-            Ui.shouldStop = false;
+            Ui.uploadShouldStop = false;
             Log.redirectOutputTo();
 
             String url = urlField.getText().trim();
@@ -220,6 +221,74 @@ public class ActionButtonPanelBuilder {
             if (hasDuplicateBaseDomains(domains)) return;
 
             CPanelFileUpload.uploadBackupFiles(url, username, password, originalDomains, domains, backupDir);
+        });
+
+        backupKillButton.addActionListener(e -> {
+            ImageIcon icon = Dialog.getAlertIcon(); // Use the alert icon
+
+            String[] options = {"Upload", "Restore", "Cancel"};
+            int choice = JOptionPane.showOptionDialog(
+                    null,
+                    "Which backup process do you want to terminate?",
+                    "Terminate Backup Process",
+                    JOptionPane.DEFAULT_OPTION,
+                    JOptionPane.WARNING_MESSAGE,
+                    icon,
+                    options,
+                    options[2] // Default: Cancel
+            );
+
+            switch (choice) {
+                case 0:
+                    Ui.uploadShouldStop = true;
+                    Dialog.AlertDialog("⚠️ Upload termination signal sent. The upload process will stop shortly.");
+                    break;
+                case 1:
+                    Ui.restoreShouldStop = true;
+                    Dialog.AlertDialog("⚠️ Restore termination signal sent. The restore process will stop shortly.");
+                    break;
+                default:
+                    break; // Cancel or dialog closed
+            }
+        });
+
+        restoreButton.addActionListener(e -> {
+            Ui.restoreShouldStop = false;
+            Log.redirectOutputTo();
+
+            String url = urlField.getText().trim();
+            String username = userField.getText().trim();
+            String password = new String(passField.getPassword()).trim();
+
+            int activeTabIndex = TabManager.getTabbedPane().getSelectedIndex();
+
+            List<String> dirs = TabManager.getCheckedDirectoriesFromActiveTab();
+            StringBuilder result = new StringBuilder();
+            for (String dir : dirs) {
+                result.append(dir).append(", ");
+            }
+            if (result.length() >= 2) {
+                result.setLength(result.length() - 2);
+            }
+            String directory = String.valueOf(result);
+
+            if (directory == null) return;
+
+            if (url.isEmpty() || username.isEmpty() || password.isEmpty() || directory.isEmpty()) {
+                Dialog.ErrorDialog("Please fill in all required fields.");
+                return;
+            }
+
+            boolean isMm = false;
+            List<JCheckBox> mmCheckboxes = TabManager.getMmCheckboxes();
+            if (activeTabIndex < mmCheckboxes.size()) {
+                isMm = mmCheckboxes.get(activeTabIndex).isSelected();
+            }
+
+            List<String> domains = DomainUitls.splitDomainName(isMm, directory);
+            if (hasDuplicateBaseDomains(domains)) return;
+
+            WordPressRestoreBackup.restoreUploadedBackups(url, username, password, domains);
         });
     }
 

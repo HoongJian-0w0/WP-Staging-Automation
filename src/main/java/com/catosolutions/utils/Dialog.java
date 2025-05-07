@@ -83,8 +83,12 @@ public class Dialog {
      * @param url Image URL
      * @return ImageIcon if URL is valid, null otherwise
      */
-    private static ImageIcon loadIcon(URL url) {
+    public static ImageIcon loadIcon(URL url) {
         return (url != null) ? new ImageIcon(url) : null;
+    }
+
+    public static ImageIcon getAlertIcon() {
+        return loadIcon(ALERT_ICON);
     }
 
 }

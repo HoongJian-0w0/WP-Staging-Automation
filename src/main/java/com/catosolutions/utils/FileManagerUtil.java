@@ -181,29 +181,50 @@ public class FileManagerUtil {
             }
         }
 
+        // Ensure tab exists
         while (TabManager.getAllTextAreas().size() <= tabIndex) {
             TabManager.createAndAddTab("");
         }
 
+        // Set text content
         JTextArea area = TabManager.getAllTextAreas().get(tabIndex);
         area.setText(cleanedText.toString().trim());
 
+        // Set MM checkbox if marked
         if (isMM && tabIndex < TabManager.getAllMMCheckboxes().size()) {
             TabManager.getAllMMCheckboxes().get(tabIndex).setSelected(true);
         }
 
         int finalTabIndex = tabIndex;
+
         SwingUtilities.invokeLater(() -> {
             JPanel tabContent = (JPanel) TabManager.getTabPane().getComponentAt(finalTabIndex);
-            JScrollPane scrollPane = (JScrollPane) ((JPanel) ((JPanel) tabContent.getComponent(0)).getComponent(0)).getComponent(0);
-            JPanel checkboxPanel = (JPanel) ((JPanel) scrollPane.getViewport().getView()).getComponent(0);
+            JPanel contentPanel = (JPanel) tabContent.getComponent(0); // main panel
+            JPanel centerPanel = (JPanel) contentPanel.getComponent(0);
+            JScrollPane scrollPane = (JScrollPane) ((BorderLayout) centerPanel.getLayout()).getLayoutComponent(BorderLayout.CENTER);
+            JPanel horizontalPanel = (JPanel) scrollPane.getViewport().getView();
+            JPanel checkboxPanel = (JPanel) horizontalPanel.getComponent(0); // left panel with checkboxes
+
+            int validLineCount = 0;
+            int checkedCount = 0;
 
             for (int j = 0; j < checkedStates.size(); j++) {
                 if (j < checkboxPanel.getComponentCount()) {
                     Component comp = checkboxPanel.getComponent(j);
                     if (comp instanceof JCheckBox cb) {
                         cb.setSelected(checkedStates.get(j));
+                        if (checkedStates.get(j)) checkedCount++;
+                        validLineCount++;
                     }
+                }
+            }
+
+            // Get bottom panel and set "All" checkbox if needed
+            JPanel bottomPanel = (JPanel) contentPanel.getComponent(1);
+            for (Component comp : bottomPanel.getComponents()) {
+                if (comp instanceof JCheckBox allCheckBox) {
+                    allCheckBox.setSelected(validLineCount > 0 && checkedCount == validLineCount);
+                    break;
                 }
             }
         });
